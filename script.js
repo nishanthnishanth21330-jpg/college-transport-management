@@ -356,6 +356,9 @@ function initAddBusPage() {
 
       const busData = {
         id: newBusRef.key,
+        ownerId: Auth.getUser().id,
+        ownerName: Auth.getUser().name,
+        ownerPhone: Auth.getUser().phone,
         bus_name: fields.bus_name,
         bus_number: fields.bus_number,
         driver_name: fields.driver_name,
@@ -468,8 +471,26 @@ function renderBusCard(bus) {
   const isLive = bus.status === 'LIVE';
   const isCompleted = bus.status === 'COMPLETED';
 
+  const currentUser = Auth.getUser();
+  const isOwner = !!currentUser && bus.ownerId === currentUser.id;
+
+  const ownerControls = isOwner ? `
+    <div class="inline-edit" style="display:none;" id="edit-wrap-${bus.id}">
+      <input type="text" id="edit-input-${bus.id}" value="${escapeHtml(bus.bus_name)}" />
+      <button class="btn btn-primary btn-sm save-name-btn" data-id="${bus.id}">SAVE</button>
+    </div>
+
+    <div class="bus-card-actions owner-controls">
+      <button class="btn btn-outline btn-sm change-name-btn" data-id="${bus.id}">CHANGE NAME</button>
+      <button class="btn btn-accent btn-sm start-journey-btn" data-id="${bus.id}" ${isStopped ? '' : 'style="display:none;"'}>START JOURNEY</button>
+      <button class="btn btn-danger btn-sm stop-journey-btn" data-id="${bus.id}" ${isLive ? '' : 'style="display:none;"'}>STOP JOURNEY</button>
+      ${isCompleted ? `<button class="btn btn-accent btn-sm start-journey-btn" data-id="${bus.id}">START JOURNEY</button>` : ''}
+      <button class="btn btn-danger btn-sm delete-bus-btn" data-id="${bus.id}">DELETE BUS</button>
+    </div>
+  ` : '';
+
   return `
-    <div class="card bus-card" data-bus-id="${bus.id}">
+    <div class="card bus-card ${isOwner ? 'bus-owner-card' : 'bus-viewer-card'}" data-bus-id="${bus.id}">
       <div class="bus-card-header">
         <div class="bus-card-title">
           <span class="emoji">🚌</span>
@@ -487,61 +508,57 @@ function renderBusCard(bus) {
         ${bus.route_details ? `<div><span class="label">Details:</span> ${escapeHtml(bus.route_details)}</div>` : ''}
       </div>
 
-      <div class="inline-edit" style="display:none;" id="edit-wrap-${bus.id}">
-        <input type="text" id="edit-input-${bus.id}" value="${escapeHtml(bus.bus_name)}" />
-        <button class="btn btn-primary btn-sm save-name-btn" data-id="${bus.id}">SAVE</button>
+      <div class="bus-card-actions view-location-actions">
+        <button class="btn btn-primary btn-sm view-location-btn" data-id="${bus.id}">BUS LIVE LOCATION</button>
       </div>
 
-      <div class="bus-card-actions">
-        <button class="btn btn-outline btn-sm change-name-btn" data-id="${bus.id}">CHANGE NAME</button>
-        <button class="btn btn-outline btn-sm view-location-btn" data-id="${bus.id}">BUS LIVE LOCATION</button>
-        <button class="btn btn-accent btn-sm start-journey-btn" data-id="${bus.id}" ${isStopped ? '' : 'style="display:none;"'}>START JOURNEY</button>
-        <button class="btn btn-danger btn-sm stop-journey-btn" data-id="${bus.id}" ${isLive ? '' : 'style="display:none;"'}>STOP JOURNEY</button>
-       ${isCompleted ? `<button class="btn btn-accent btn-sm start-journey-btn" data-id="${bus.id}">START JOURNEY</button>` : ''}
-         <button
-            class="btn btn-danger btn-sm delete-bus-btn"
-            data-id="${bus.id}">
-            DELETE BUS
-           </button>
-      </div>
+      ${ownerControls}
     </div>
   `;
 }
-async function deleteBus(busId) {
 
-  if (!confirm('Are you sure you want to delete this bus?')) {
+async function deleteBus(busId) {
+  const currentUser = Auth.getUser();
+  if (!currentUser) {
+    toast('Please log in first.', 'error');
     return;
   }
 
   try {
+    const snapshot = await new Promise((resolve, reject) => {
+      onValue(ref(db, `buses/${busId}`), resolve, reject, { onlyOnce: true });
+    });
 
-    const busRef = ref(db, `buses/${busId}`);
+    if (!snapshot.exists()) {
+      toast('Bus not found.', 'error');
+      return;
+    }
 
-    await set(busRef, null);
+    const bus = snapshot.val();
 
-    console.log('Bus deleted successfully:', busId);
+    if (bus.ownerId !== currentUser.id) {
+      toast('Only the bus owner can delete this bus.', 'error');
+      return;
+    }
 
-    toast(
-      'Bus Deleted Successfully',
-      'success'
-    );
+    if (!confirm('Are you sure you want to delete this bus?')) return;
 
+    if (watchId !== null && trackingBusId === busId) {
+      navigator.geolocation.clearWatch(watchId);
+      watchId = null;
+      trackingBusId = null;
+    }
+
+    await set(ref(db, `buses/${busId}`), null);
+    toast('Bus Deleted Successfully', 'success');
     await loadBuses();
 
   } catch (err) {
-
-    console.error(
-      'Delete Bus Error:',
-      err
-    );
-
-    toast(
-      err.message || 'Failed to delete bus.',
-      'error'
-    );
-
+    console.error('Delete Bus Error:', err);
+    toast(err.message || 'Failed to delete bus.', 'error');
   }
 }
+
 document.addEventListener('click', (e) => {
 
   // START JOURNEY
@@ -597,6 +614,13 @@ function attachBusCardHandlers(bus) {
 
   if (saveBtn) {
     saveBtn.addEventListener('click', async () => {
+      const currentUser = Auth.getUser();
+
+      if (!currentUser || bus.ownerId !== currentUser.id) {
+        toast('Only the bus owner can change the bus name.', 'error');
+        return;
+      }
+
       const input = document.getElementById(`edit-input-${id}`);
       const newName = input.value.trim();
 
@@ -665,341 +689,239 @@ function attachBusCardHandlers(bus) {
 
 
 // START JOURNEY
-function startJourney(busId) {
+async function startJourney(busId) {
+  const currentUser = Auth.getUser();
 
-  console.log('Starting journey:', busId);
+  if (!currentUser) {
+    toast('Please log in first.', 'error');
+    return;
+  }
+
+  try {
+    const snapshot = await new Promise((resolve, reject) => {
+      onValue(ref(db, `buses/${busId}`), resolve, reject, { onlyOnce: true });
+    });
+
+    if (!snapshot.exists()) {
+      toast('Bus not found.', 'error');
+      return;
+    }
+
+    if (snapshot.val().ownerId !== currentUser.id) {
+      toast('Only the bus owner can start this journey.', 'error');
+      return;
+    }
+  } catch (err) {
+    console.error('Owner Check Error:', err);
+    toast('Unable to verify bus ownership.', 'error');
+    return;
+  }
 
   if (!navigator.geolocation) {
-    toast(
-      'Geolocation is not supported by your browser.',
-      'error'
-    );
+    toast('Geolocation is not supported by your browser.', 'error');
     return;
   }
 
   navigator.geolocation.getCurrentPosition(
-
     async (position) => {
-
       const latitude = position.coords.latitude;
       const longitude = position.coords.longitude;
 
-      console.log('Location:', latitude, longitude);
-
       try {
-
         const busRef = ref(db, `buses/${busId}`);
 
         await update(busRef, {
           status: 'LIVE',
-          latitude: latitude,
-          longitude: longitude,
+          latitude,
+          longitude,
           journey_started_at: new Date().toISOString()
         });
 
-        console.log('Firebase journey started');
-
-        toast(
-          'Journey Started Successfully',
-          'success'
-        );
-
+        toast('Journey Started Successfully', 'success');
         trackingBusId = busId;
 
-        if (watchId !== null) {
-          navigator.geolocation.clearWatch(watchId);
-        }
+        if (watchId !== null) navigator.geolocation.clearWatch(watchId);
 
         watchId = navigator.geolocation.watchPosition(
-
           async (pos) => {
-              const latitude = pos.coords.latitude;
-          const longitude = pos.coords.longitude;
-
-          console.log(
-          'LIVE GPS:',
-           latitude,
-          longitude,
-           'Accuracy:',
-          pos.coords.accuracy
-      );
-
             try {
-
               await update(busRef, {
                 latitude: pos.coords.latitude,
                 longitude: pos.coords.longitude,
-                location_updated_at:
-                  new Date().toISOString()
+                location_updated_at: new Date().toISOString()
               });
 
-              console.log(
-                'Location updated:',
-                pos.coords.latitude,
-                pos.coords.longitude
-              );
-
-              if (
-                mapModalBusId === busId &&
-                liveMarker
-              ) {
-
-                liveMarker.setLatLng([
-                  pos.coords.latitude,
-                  pos.coords.longitude
-                ]);
-
-                if (liveMap) {
-                  liveMap.panTo([
-                    pos.coords.latitude,
-                    pos.coords.longitude
-                  ]);
-                }
+              if (mapModalBusId === busId && liveMarker) {
+                liveMarker.setLatLng([pos.coords.latitude, pos.coords.longitude]);
+                if (liveMap) liveMap.panTo([pos.coords.latitude, pos.coords.longitude]);
               }
-
             } catch (err) {
-
-              console.error(
-                'Firebase Location Update Error:',
-                err
-              );
-
+              console.error('Firebase Location Update Error:', err);
             }
-
           },
-
-          (err) => {
-
-            console.error(
-              'Location Tracking Error:',
-              err
-            );
-
-            toast(
-              `Location tracking error: ${err.message}`,
-              'error'
-            );
-
-          },
-
-         {
-         enableHighAccuracy: true,
-         timeout: 30000,
-         maximumAge: 10000
-        }
-
+          (err) => toast(`Location tracking error: ${err.message}`, 'error'),
+          {
+            enableHighAccuracy: true,
+            timeout: 30000,
+            maximumAge: 10000
+          }
         );
 
         await loadBuses();
-
       } catch (err) {
-
-        console.error(
-          'Firebase Start Journey Error:',
-          err
-        );
-
-        toast(
-          err.message ||
-          'Failed to start journey.',
-          'error'
-        );
-
+        console.error('Firebase Start Journey Error:', err);
+        toast(err.message || 'Failed to start journey.', 'error');
       }
-
     },
-
     (err) => {
-
-      console.error(
-        'Get Location Error:',
-        err
-      );
-
-      if (
-        err.code ===
-        err.PERMISSION_DENIED
-      ) {
-
-        toast(
-          'Location permission denied. Please allow location access.',
-          'error'
-        );
-
+      if (err.code === err.PERMISSION_DENIED) {
+        toast('Location permission denied. Please allow location access.', 'error');
       } else {
-
-       toast(
-      `Location Error: ${err.code} - ${err.message}`,
-       'error'
-       );
-
+        toast(`Location Error: ${err.code} - ${err.message}`, 'error');
       }
-
     },
-
     {
       enableHighAccuracy: true,
-      timeout: 15000,
-      maximumAge: 0
+      timeout: 30000,
+      maximumAge: 10000
     }
-
   );
 }
 
-
 // STOP JOURNEY
 async function stopJourney(busId) {
+  const currentUser = Auth.getUser();
 
-  console.log('Stopping journey:', busId);
+  if (!currentUser) {
+    toast('Please log in first.', 'error');
+    return;
+  }
 
   try {
+    const snapshot = await new Promise((resolve, reject) => {
+      onValue(ref(db, `buses/${busId}`), resolve, reject, { onlyOnce: true });
+    });
 
-    const busRef = ref(
-      db,
-      `buses/${busId}`
-    );
+    if (!snapshot.exists()) {
+      toast('Bus not found.', 'error');
+      return;
+    }
 
-    await update(busRef, {
-  status: 'COMPLETED',
-  journey_stopped_at: new Date().toISOString()
-});
+    if (snapshot.val().ownerId !== currentUser.id) {
+      toast('Only the bus owner can stop this journey.', 'error');
+      return;
+    }
 
-console.log('Firebase journey stopped successfully:', busId);
+    await update(ref(db, `buses/${busId}`), {
+      status: 'COMPLETED',
+      journey_stopped_at: new Date().toISOString()
+    });
 
-    if (
-      watchId !== null &&
-      trackingBusId === busId
-    ) {
-
-      navigator.geolocation.clearWatch(
-        watchId
-      );
-
+    if (watchId !== null && trackingBusId === busId) {
+      navigator.geolocation.clearWatch(watchId);
       watchId = null;
       trackingBusId = null;
     }
 
-    toast(
-      'Journey Stopped Successfully — Tracking Stopped',
-      'success'
-    );
-
+    toast('Journey Stopped Successfully — Tracking Stopped', 'success');
     await loadBuses();
 
   } catch (err) {
-
-    console.error(
-      'Firebase Stop Journey Error:',
-      err
-    );
-
-    toast(
-      err.message ||
-      'Failed to stop journey.',
-      'error'
-    );
-
+    console.error('Firebase Stop Journey Error:', err);
+    toast(err.message || 'Failed to stop journey.', 'error');
   }
 }
-/* ---------------- Live location modal + Leaflet map ---------------- */
+
+/* ---------------- Full Page Live Location Map ---------------- */
+
 function openLocationModal(bus) {
   mapModalBusId = bus.id;
+
+  const modal = document.getElementById('map-modal');
+  if (!modal) return;
+
   document.getElementById('modal-bus-name').textContent = bus.bus_name;
   document.getElementById('modal-bus-number').textContent = bus.bus_number;
-  document.getElementById('map-modal').classList.add('open');
 
+  modal.classList.add('open');
+  document.body.classList.add('map-page-open');
   updateMapMeta(bus);
 
   setTimeout(() => {
-    const lat = bus.latitude || 20.5937;
-    const lng = bus.longitude || 78.9629;
+    const lat = bus.latitude != null ? Number(bus.latitude) : 20.5937;
+    const lng = bus.longitude != null ? Number(bus.longitude) : 78.9629;
+    const zoom = bus.latitude != null && bus.longitude != null ? 15 : 5;
 
     if (!liveMap) {
-      liveMap = L.map('map').setView([lat, lng], bus.latitude ? 15 : 5);
+      liveMap = L.map('map').setView([lat, lng], zoom);
+
       L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         attribution: '&copy; OpenStreetMap contributors',
         maxZoom: 19
       }).addTo(liveMap);
+
       liveMarker = L.marker([lat, lng]).addTo(liveMap);
     } else {
-      liveMap.setView([lat, lng], bus.latitude ? 15 : 5);
+      liveMap.setView([lat, lng], zoom);
       liveMarker.setLatLng([lat, lng]);
-      liveMap.invalidateSize();
     }
-    liveMarker.bindPopup(`<strong>${escapeHtml(bus.bus_name)}</strong><br>${escapeHtml(bus.bus_number)}`).openPopup();
-  }, 100);
 
-  // Auto-refresh location from server every 5s while modal open (covers other viewers' live buses)
- mapAutoRefreshTimer = setInterval(async () => {
+    liveMarker
+      .bindPopup(`<strong>${escapeHtml(bus.bus_name)}</strong><br>${escapeHtml(bus.bus_number)}`)
+      .openPopup();
 
-  if (!mapModalBusId) return;
+    liveMap.invalidateSize();
+  }, 150);
 
-  try {
+  if (mapAutoRefreshTimer) clearInterval(mapAutoRefreshTimer);
 
-    const busRef = ref(
-      db,
-      `buses/${mapModalBusId}`
-    );
+  mapAutoRefreshTimer = setInterval(async () => {
+    if (!mapModalBusId) return;
 
-    const snapshot = await new Promise((resolve, reject) => {
+    try {
+      const snapshot = await new Promise((resolve, reject) => {
+        onValue(ref(db, `buses/${mapModalBusId}`), resolve, reject, { onlyOnce: true });
+      });
 
-      onValue(
-        busRef,
-        resolve,
-        {
-          onlyOnce: true
-        }
-      );
+      if (!snapshot.exists()) return;
 
-    });
+      const latestBus = snapshot.val();
+      updateMapMeta(latestBus);
 
-    if (!snapshot.exists()) return;
+      if (liveMarker && latestBus.latitude != null && latestBus.longitude != null) {
+        const lat = Number(latestBus.latitude);
+        const lng = Number(latestBus.longitude);
 
-    const bus = snapshot.val();
-
-    updateMapMeta(bus);
-
-    if (
-      liveMarker &&
-      bus.latitude != null &&
-      bus.longitude != null
-    ) {
-
-      liveMarker.setLatLng([
-        bus.latitude,
-        bus.longitude
-      ]);
-
-      if (liveMap) {
-        liveMap.panTo([
-          bus.latitude,
-          bus.longitude
-        ]);
+        liveMarker.setLatLng([lat, lng]);
+        if (liveMap) liveMap.panTo([lat, lng]);
       }
-
+    } catch (err) {
+      console.error('Firebase Live Location Error:', err);
     }
-
-  } catch (err) {
-
-    console.error(
-      'Firebase Live Location Error:',
-      err
-    );
-
-  }
-
-}, 5000);}
+  }, 5000);
+}
 
 function updateMapMeta(bus) {
-  document.getElementById('modal-lat').textContent = bus.latitude != null ? bus.latitude.toFixed(6) : '—';
-  document.getElementById('modal-lng').textContent = bus.longitude != null ? bus.longitude.toFixed(6) : '—';
-  document.getElementById('modal-updated').textContent = new Date().toLocaleTimeString();
+  const lat = document.getElementById('modal-lat');
+  const lng = document.getElementById('modal-lng');
+  const updated = document.getElementById('modal-updated');
+
+  if (lat) lat.textContent = bus.latitude != null ? Number(bus.latitude).toFixed(6) : '—';
+  if (lng) lng.textContent = bus.longitude != null ? Number(bus.longitude).toFixed(6) : '—';
+  if (updated) updated.textContent = new Date().toLocaleTimeString();
 }
 
 function closeLocationModal() {
-  document.getElementById('map-modal').classList.remove('open');
+  const modal = document.getElementById('map-modal');
+  if (modal) modal.classList.remove('open');
+
+  document.body.classList.remove('map-page-open');
   mapModalBusId = null;
-  if (mapAutoRefreshTimer) { clearInterval(mapAutoRefreshTimer); mapAutoRefreshTimer = null; }
+
+  if (mapAutoRefreshTimer) {
+    clearInterval(mapAutoRefreshTimer);
+    mapAutoRefreshTimer = null;
+  }
 }
 
 /* ---------------- Bootstrapping ---------------- */
