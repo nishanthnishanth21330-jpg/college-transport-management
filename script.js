@@ -782,11 +782,11 @@ function startJourney(busId) {
 
           },
 
-          {
-            enableHighAccuracy: true,
-            maximumAge:0,
-            timeout: 10000
-          }
+         {
+         enableHighAccuracy: true,
+         timeout: 30000,
+         maximumAge: 10000
+        }
 
         );
 
@@ -828,10 +828,10 @@ function startJourney(busId) {
 
       } else {
 
-        toast(
-          'Unable to retrieve your location. Please try again.',
-          'error'
-        );
+       toast(
+      `Location Error: ${err.code} - ${err.message}`,
+       'error'
+       );
 
       }
 
