@@ -1,0 +1,145 @@
+```html
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+  <title>Live Bus — College Transport</title>
+
+  <link rel="stylesheet" href="style.css" />
+
+  <link
+    rel="stylesheet"
+    href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"
+  />
+</head>
+
+<body data-page="live-bus">
+
+  <!-- Sidebar / Navbar -->
+  <div id="sidebar-root"></div>
+
+
+  <!-- Main Content -->
+  <main class="main-content">
+
+    <div class="page-header">
+      <h1>Live Bus Tracking</h1>
+      <p>
+        View, start, stop and track all registered college buses.
+      </p>
+    </div>
+
+
+    <!-- Loading -->
+    <div id="bus-loader" class="loader"></div>
+
+
+    <!-- No Bus -->
+    <div
+      id="bus-empty"
+      class="empty-state card"
+      style="display:none;"
+    >
+
+      <div class="emoji">🚌</div>
+
+      <h3>No buses yet</h3>
+
+      <p>
+        Add a bus from the "Add Bus" page to see it here.
+      </p>
+
+      <a
+        href="add-bus.html"
+        class="btn btn-primary"
+        style="margin-top:14px;"
+      >
+        + Add New Bus
+      </a>
+
+    </div>
+
+
+    <!-- Bus List -->
+    <div id="bus-grid" class="bus-grid"></div>
+
+  </main>
+
+
+  <!-- Live Location Modal -->
+  <div class="modal-overlay" id="map-modal">
+
+    <div class="modal-box">
+
+      <button
+        class="modal-close"
+        id="modal-close"
+        type="button"
+      >
+        ✕
+      </button>
+
+
+      <h3 id="modal-bus-name">
+        Bus
+      </h3>
+
+
+      <div
+        style="
+          font-size:0.85rem;
+          color:var(--text-muted);
+        "
+      >
+        Bus Number:
+        <strong id="modal-bus-number"></strong>
+      </div>
+
+
+      <!-- Map -->
+      <div id="map"></div>
+
+
+      <!-- Location Details -->
+      <div class="map-meta">
+
+        <div>
+          Current Latitude:
+          <strong id="modal-lat">—</strong>
+        </div>
+
+        <div>
+          Current Longitude:
+          <strong id="modal-lng">—</strong>
+        </div>
+
+        <div>
+          Last Updated:
+          <strong id="modal-updated">—</strong>
+        </div>
+
+      </div>
+
+    </div>
+
+  </div>
+
+
+  <!-- Leaflet JS -->
+  <script
+    src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js">
+  </script>
+
+
+  <!-- Main Project JS -->
+  <script
+    type="module"
+    src="script.js">
+  </script>
+
+</body>
+</html>
+```

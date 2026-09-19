@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>College Transport Management System</title>
+<link rel="stylesheet" href="style.css" />
+</head>
+<body data-page="home">
+
+<div id="sidebar-root"></div>
+
+<main class="main-content">
+  <div class="page-header">
+    <h1>COLLEGE TRANSPORT MANAGEMENT SYSTEM</h1>
+    <p>Smart and Simple College Bus Tracking System</p>
+    <p id="welcome-user" style="margin-top:10px;font-weight:600;color:var(--primary);"></p>
+  </div>
+
+  <p style="max-width:680px;color:var(--text-muted);margin-bottom:26px;">
+    This system helps the college manage buses, keep track of bus and driver information,
+    and monitor live journeys in real time — from the moment a bus starts its route
+    until it reaches its destination.
+  </p>
+
+  <div class="stats-grid">
+    <div class="card stat-card total">
+      <span class="stat-label">Total Buses</span>
+      <span class="stat-value" id="stat-total">0</span>
+    </div>
+    <div class="card stat-card active">
+      <span class="stat-label">Active Buses</span>
+      <span class="stat-value" id="stat-active">0</span>
+    </div>
+    <div class="card stat-card live">
+      <span class="stat-label">Live Buses</span>
+      <span class="stat-value" id="stat-live">0</span>
+    </div>
+    <div class="card stat-card completed">
+      <span class="stat-label">Completed Journeys</span>
+      <span class="stat-value" id="stat-completed">0</span>
+    </div>
+  </div>
+
+  <div class="quick-actions">
+    <a href="add-bus.html" class="btn btn-primary">+ Add New Bus</a>
+    <a href="live-bus.html" class="btn btn-outline">View Live Buses</a>
+  </div>
+
+  <div class="card" style="margin-bottom:10px;">
+    <h3 style="margin-top:0;">How It Works</h3>
+    <div class="steps-grid">
+      <div class="step-card">
+        <div class="step-number">1</div>
+        <h4>Add Bus</h4>
+        <p>Register a bus with driver and route details.</p>
+      </div>
+      <div class="step-card">
+        <div class="step-number">2</div>
+        <h4>Start Journey</h4>
+        <p>Driver starts the trip and shares live location.</p>
+      </div>
+      <div class="step-card">
+        <div class="step-number">3</div>
+        <h4>Track Live Location</h4>
+        <p>Students and staff track the bus on the map.</p>
+      </div>
+      <div class="step-card">
+        <div class="step-number">4</div>
+        <h4>Stop Journey</h4>
+        <p>Journey ends and tracking stops automatically.</p>
+      </div>
+    </div>
+  </div>
+</main>
+
+<script type="module" src="script.js"></script>
+</body>
+</html>
+
